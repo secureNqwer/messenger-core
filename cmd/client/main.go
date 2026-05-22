@@ -33,15 +33,26 @@ type authData struct {
 const authFile = "auth.json"
 
 func main() {
-	guiMode  := flag.Bool("gui", false, "start web UI and open browser")
-	showVer  := flag.Bool("version", false, "show version")
-	cfgPath  := flag.String("config", "messenger.json", "path to config JSON")
-	network  := flag.String("network", "", "ZeroTier network ID to join")
-	logLevel := flag.String("log", "info", "log level (debug|info|warn|error)")
+	guiMode     := flag.Bool("gui", false, "start web UI and open browser")
+	showVer     := flag.Bool("version", false, "show version")
+	installMode := flag.Bool("install", false, "install Zerolink system-wide")
+	uninstallMode := flag.Bool("uninstall", false, "remove Zerolink from system")
+	cfgPath     := flag.String("config", "messenger.json", "path to config JSON")
+	network     := flag.String("network", "", "ZeroTier network ID to join")
+	logLevel    := flag.String("log", "info", "log level (debug|info|warn|error)")
 	flag.Parse()
 
 	if *showVer {
 		fmt.Printf("%s %s (commit: %s, built: %s)\n", version.Name, version.Version, version.Commit, version.BuildTime)
+		return
+	}
+
+	if *installMode {
+		doInstall()
+		return
+	}
+	if *uninstallMode {
+		doUninstall()
 		return
 	}
 
@@ -787,6 +798,39 @@ func isZerotierIP(addr string) bool {
 		}
 	}
 	return false
+}
+
+func doInstall() {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	dst := "/usr/local/bin/zerolink"
+	fmt.Printf("Installing to %s ...\n", dst)
+	if err := copyFile(exe, dst); err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	fmt.Println("✓ Installed to /usr/local/bin/zerolink")
+	fmt.Println("  Run 'zerolink' to start CLI")
+	fmt.Println("  Run 'zerolink -gui' for web UI")
+}
+
+func doUninstall() {
+	paths := []string{"/usr/local/bin/zerolink", "/usr/local/bin/zerolink-server"}
+	for _, p := range paths {
+		os.Remove(p)
+	}
+	fmt.Println("✓ Zerolink removed from system")
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0755)
 }
 
 func checkUpdate() {
