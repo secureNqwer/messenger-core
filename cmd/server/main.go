@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +28,11 @@ func main() {
 		}
 		fmt.Printf("Config loaded: zt_network=%q\n", cfg.ZTNetwork)
 	} else {
-		fmt.Printf("No config file (%s), using defaults\n", *cfgPath)
+		fmt.Printf("\nNo config file (%s) found.\n", *cfgPath)
+		cfg = runServerSetup()
+		data, _ := json.MarshalIndent(cfg, "", "  ")
+		os.WriteFile(*cfgPath, data, 0644)
+		fmt.Printf("Config saved to %s\n\n", *cfgPath)
 	}
 
 	// ─── Create server ─────────────────────────────────────────────────
@@ -144,6 +150,50 @@ func detectSystemZTNetworks() []string {
 		}
 	}
 	return nets
+}
+
+func runServerSetup() *server.ServerConfig {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("\n─── Server Setup ───")
+	fmt.Println()
+
+	port := ""
+	for {
+		fmt.Print("Port [8080]: ")
+		p, _ := reader.ReadString('\n')
+		p = strings.TrimSpace(p)
+		if p == "" {
+			p = "8080"
+		}
+		port = p
+		break
+	}
+
+	secret := ""
+	for {
+		fmt.Print("Token secret (for user auth): ")
+		s, _ := reader.ReadString('\n')
+		s = strings.TrimSpace(s)
+		if s == "" {
+			fmt.Println("Secret cannot be empty")
+			continue
+		}
+		secret = s
+		break
+	}
+
+	ztNetwork := ""
+	fmt.Print("ZeroTier network ID (press Enter to skip): ")
+	z, _ := reader.ReadString('\n')
+	ztNetwork = strings.TrimSpace(z)
+
+	cfg := server.DefaultServerConfig()
+	cfg.ListenAddr = ":" + port
+	cfg.TokenSecret = secret
+	cfg.ZTNetwork = ztNetwork
+
+	fmt.Println()
+	return cfg
 }
 
 func primaryIP() string {
