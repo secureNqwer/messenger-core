@@ -63,59 +63,20 @@ echo "==> Сброс локальных изменений для обеспеч
 git -C "$BUILD_DIR" reset --hard
 git -C "$BUILD_DIR" submodule foreach --recursive git reset --hard
 
-echo "==> Применение патчей для сборки под Windows..."
-# 1. Исправление /EHsc и путей к библиотекам Windows в CMakeLists.txt
+# ── Патчи для всех платформ ───────────────────────────────────────────────
 sed -i 's/\/EHsc //g' "$BUILD_DIR/CMakeLists.txt"
 sed -i 's|include_directories(${ZTO_SRC_DIR}/osdep)|include_directories(${ZTO_SRC_DIR}/osdep)\ninclude_directories(${ZTO_SRC_DIR}/ext)|g' "$BUILD_DIR/CMakeLists.txt"
 
-# Заменяем Windows Kit пути на стандартные имена библиотек для MinGW
-cat > "$BUILD_DIR/_patch_win_libs.py" << 'EOF'
-import sys
+sed -i 's/\&timeout, sizeof(struct timeval)/(const char *)\&timeout, sizeof(struct timeval)/g' "$BUILD_DIR/ext/ZeroTierOne/ext/miniupnpc/connecthostport.c" 2>/dev/null || true
+sed -i '1s/^/#include <stdexcept>\n/' "$BUILD_DIR/ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/registry.h" 2>/dev/null || true
+sed -i '1s/^/#include <stdexcept>\n/' "$BUILD_DIR/ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/family.h" 2>/dev/null || true
+sed -i 's/const struct zts_in6_addr zts_in6addr_any = ZTS_IN6ADDR_ANY_INIT;/extern const struct zts_in6_addr zts_in6addr_any;/g' "$BUILD_DIR/include/ZeroTierSockets.h" 2>/dev/null || true
+sed -i 's/#ifdef ADD_EXPORTS/#ifdef ZTS_STATIC\n#define ZTS_API\n#elif defined(ADD_EXPORTS)/g' "$BUILD_DIR/include/ZeroTierSockets.h" 2>/dev/null || true
 
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    content = f.read().replace('\r\n', '\n')
-
-old_block = """    set(ws2_32_LIBRARY_PATH "${WINLIBDIR}/WS2_32.Lib")
-    set(shlwapi_LIBRARY_PATH "${WINLIBDIR}/ShLwApi.Lib")
-    set(iphlpapi_LIBRARY_PATH "${WINLIBDIR}/iphlpapi.Lib")"""
-
-new_block = """    if(MSVC)
-        set(ws2_32_LIBRARY_PATH "${WINLIBDIR}/WS2_32.Lib")
-        set(shlwapi_LIBRARY_PATH "${WINLIBDIR}/ShLwApi.Lib")
-        set(iphlpapi_LIBRARY_PATH "${WINLIBDIR}/iphlpapi.Lib")
-    else()
-        set(ws2_32_LIBRARY_PATH "ws2_32")
-        set(shlwapi_LIBRARY_PATH "shlwapi")
-        set(iphlpapi_LIBRARY_PATH "iphlpapi")
-        set(ZT_FLAGS "${ZT_FLAGS} -DOMIT_JSON_SUPPORT=1")
-    endif()"""
-
-if old_block in content:
-    content = content.replace(old_block, new_block)
-    print("Successfully patched libraries in CMakeLists.txt")
-else:
-    print("Warning: Could not find library block in CMakeLists.txt")
-
-with open(sys.argv[1], 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
-
-python3 "$BUILD_DIR/_patch_win_libs.py" "$BUILD_DIR/CMakeLists.txt"
-rm -f "$BUILD_DIR/_patch_win_libs.py"
-
-# 2. Исправление setsockopt в connecthostport.c для miniupnpc
-sed -i 's/\&timeout, sizeof(struct timeval)/(const char *)\&timeout, sizeof(struct timeval)/g' "$BUILD_DIR/ext/ZeroTierOne/ext/miniupnpc/connecthostport.c"
-
-# 3. Исправление Phy.hpp (Metrics не объявлен на Windows)
-sed -i 's/Metrics::udp_send += len;/#ifndef _WIN32\n\t\t\tMetrics::udp_send += len;\n#endif/g' "$BUILD_DIR/ext/ZeroTierOne/osdep/Phy.hpp"
-
-# 4. Исправление prometheus-cpp-lite (std::invalid_argument требует <stdexcept>)
-sed -i '1s/^/#include <stdexcept>\n/' "$BUILD_DIR/ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/registry.h"
-sed -i '1s/^/#include <stdexcept>\n/' "$BUILD_DIR/ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/family.h"
-
-# 5. Исправление ZeroTierSockets.h (extern символ и ZTS_STATIC)
-sed -i 's/const struct zts_in6_addr zts_in6addr_any = ZTS_IN6ADDR_ANY_INIT;/extern const struct zts_in6_addr zts_in6addr_any;/g' "$BUILD_DIR/include/ZeroTierSockets.h"
-sed -i 's/#ifdef ADD_EXPORTS/#ifdef ZTS_STATIC\n#define ZTS_API\n#elif defined(ADD_EXPORTS)/g' "$BUILD_DIR/include/ZeroTierSockets.h"
+# Windows-specific patches
+if [[ $WINDOWS -eq 1 ]]; then
+    sed -i 's/Metrics::udp_send += len;/#ifndef _WIN32\n\t\t\tMetrics::udp_send += len;\n#endif/g' "$BUILD_DIR/ext/ZeroTierOne/osdep/Phy.hpp" 2>/dev/null || true
+fi
 
 # ── CMake конфигурация ────────────────────────────────────────────────────────
 CMAKE_BUILD="$BUILD_DIR/_build"
