@@ -706,6 +706,25 @@ func handleCommand(ctx context.Context, m *messenger.Engine, line string, log *z
 		}
 		fmt.Println("call ended")
 
+	case "/update":
+		fmt.Println("Checking for updates...")
+		cmd := exec.Command("git", "pull", "--ff-only")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Println("Update failed:", err)
+			return
+		}
+		fmt.Println("Rebuilding...")
+		build := exec.Command("go", "build", "-tags", "fts5", "-o", "zerolink", "./cmd/client")
+		build.Stdout = os.Stdout
+		build.Stderr = os.Stderr
+		if err := build.Run(); err != nil {
+			fmt.Println("Rebuild failed:", err)
+			return
+		}
+		fmt.Println("✓ Updated and rebuilt. Restart Zerolink to use the new version.")
+
 	default:
 		fmt.Println("unknown command:", cmd)
 	}
